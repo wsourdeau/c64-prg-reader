@@ -78,13 +78,13 @@ begin
     Inc(pState.pos);
 end;
 
-function ReadInt16(var pState: ParseState): integer;
+function ReadWord(var pState: ParseState): Word;
 var
     bytePtr: PByte;
 begin
     EnsureSizeLeft(pState, sizeOf(integer));
     bytePtr := pState.bBuffer.data + pState.pos;
-    ReadInt16 := PInteger(bytePtr)^;
+    ReadWord := PWord(bytePtr)^;
     Inc(pState.pos, 2);
 end;
 
@@ -101,7 +101,7 @@ function ReadBasicLine(var pState: ParseState; currentAddr: integer): BasicLine;
 var
     bLine: BasicLine;
 begin
-    bLine.nextAddr := ReadInt16(pState);
+    bLine.nextAddr := ReadWord(pState);
     if bLine.nextAddr = 0 then
     begin
         bLine.rawLine.data := nil;
@@ -143,7 +143,7 @@ var
 begin
     pState.bBuffer := bBuffer;
     pState.pos := 0;
-    bPrg.startAddr := ReadInt16(pState);
+    bPrg.startAddr := ReadWord(pState);
     bPrg.nbrLines := 0;
     bPrg.maxLines := 64;
     SetLength(bPrg.basicLines, bPrg.maxLines);
@@ -186,7 +186,7 @@ begin
 
     quoted := false;
 
-    Str(ReadInt16(pState), decodedLine);
+    Str(ReadWord(pState), decodedLine);
     decodedLine := decodedLine + ' ';
     while pState.pos < (pState.bBuffer.size - 1) do
     begin
