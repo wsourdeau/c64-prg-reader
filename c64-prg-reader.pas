@@ -1,5 +1,7 @@
 program PrgReader;
 
+uses SysUtils;
+
 {$TYPEDADDRESS ON}
 {$R+}
 
@@ -21,6 +23,8 @@ type
         nbrLines: integer;
         maxLines: integer;
         basicLines: array of BasicLine;
+        fileSize : integer;
+        remainingBytes : integer;
     end;
 
 const
@@ -157,6 +161,9 @@ begin
         currentAddr := newLine.nextAddr
     end;
 
+    bPrg.fileSize := bBuffer.size;
+    bPrg.remainingBytes := bBuffer.size - pState.pos;
+
     ParseBasicPrg := bPrg;
 end;
 
@@ -205,14 +212,18 @@ begin
     DecodeLine := decodedLine;
 end;
 
-procedure PrintBasicPrg(bPrg: BasicPrg);
+procedure PrintBasicPrg(bPrg: BasicPrg; infoMode: boolean);
 var
     bLine: BasicLine;
     i: integer;
     decodedLine: string;
 begin
-    // writeln('start address: ', format('%x', [bPrg.startAddr]));
-    // writeln('line count: ', bPrg.nbrLines);
+    if infoMode then
+    begin
+         writeln('start address: ', format('0x%X', [bPrg.startAddr]));
+         writeln('line count: ', bPrg.nbrLines);
+         writeln('(beginning of program)');
+    end;
     for i := 0 to bPrg.nbrLines - 1 do
     begin
         bLine := bPrg.basicLines[i];
@@ -222,20 +233,51 @@ begin
         if decodedLine[1] = Char(13) then
             writeln('Unexpected character.');
         writeln(decodedLine);
-        // writeln('next address: ' + format('%x', [bLine.nextAddr]) + '|' + decodedLine);
     end;
-    // writeln('(end of program)');
+    if infoMode then
+    begin
+        writeln('(end of program)');
+        writeln('file size: ', bPrg.fileSize);
+        writeln('remaining bytes: ', bPrg.remainingBytes);
+    end;
+
 end;
 
 var
     bBuffer: ByteBuffer;
     bPrg: BasicPrg;
+    i: integer;
+    helpMode, infoMode: boolean;
+    filename: string;
 begin;
-    if ParamCount > 0 then
+    helpMode := false;
+    infoMode := false;
+    for i := 1 to ParamCount do
     begin
-        bBuffer := ReadFile(ParamStr(1));
-        bPrg := ParseBasicPrg(bBuffer);
-        PrintBasicPrg(bPrg);
-        FreeMem(bBuffer.data);
+        if ParamStr(i) = '--help' then
+            helpMode := true
+        else if ParamStr(i) = '--info' then
+            infoMode := true
+        else if LeftStr(ParamStr(i), 2) = '--' then
+            writeln('Unknown option: ', ParamStr(i))
+        else
+            filename := ParamStr(i);
     end;
+
+    if helpMode then
+    begin
+        writeln('c64-prg-reader --help  or  c64-prg-reader [options] filename');
+        writeln('Options:');
+        writeln('  --help    display this help');
+        writeln('  --info    display information about the file in addition to the source code');
+    end
+    else if filename = '' then
+        writeln('Missing filename parameter.')
+    else
+    begin
+        bBuffer := ReadFile(filename);
+        bPrg := ParseBasicPrg(bBuffer);
+        PrintBasicPrg(bPrg, infoMode);
+        FreeMem(bBuffer.data);
+    end
 end.
