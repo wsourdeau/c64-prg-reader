@@ -1,7 +1,7 @@
 PREFIX := /usr/local
 DEST :=
 
-TARGET := prg-reader
+TARGET := c64-prg-reader
 SRCS := $(TARGET).pas
 
 all: $(TARGET)
@@ -9,7 +9,7 @@ all: $(TARGET)
 install: all
 	install -D -t $(PREFIX)/bin $(TARGET)
 
-prg-reader: $(SRCS)
+$(TARGET): $(SRCS)
 	fpc -dDEBUG @fp.cfg $(SRCS)
 
 clean:
