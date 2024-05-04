@@ -10,7 +10,7 @@ install: all
 	install -D -t $(PREFIX)/bin $(TARGET)
 
 $(TARGET): $(SRCS)
-	fpc -dDEBUG @fp.cfg $(SRCS)
+	fpc -dDEBUG $(SRCS)
 
 clean:
 	rm -f $(TARGET) *~ $(SRCS:.pas=.o) $(SRCS:.pas=.s)
