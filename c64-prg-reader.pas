@@ -8,23 +8,23 @@ uses SysUtils;
 type
     ByteBuffer = record
         data: PByte;
-        size: integer;
+        size: Word;
     end;
     ParseState = record
         bBuffer: ByteBuffer;
-        pos: integer;
+        pos: Word;
     end;
     BasicLine = record
-        nextAddr: integer;
+        nextAddr: Word;
         rawLine: ByteBuffer;
     end;
     BasicPrg = record
-        startAddr: integer;
-        nbrLines: integer;
-        maxLines: integer;
+        startAddr: Word;
+        nbrLines: LongInt;
+        maxLines: LongInt;
         basicLines: array of BasicLine;
-        fileSize : integer;
-        remainingBytes : integer;
+        fileSize : Word;
+        remainingBytes : Word;
     end;
 
 const
@@ -50,7 +50,7 @@ var
     idx: Byte;
     nbrStr: string;
 begin
-    idx := code and $7f;
+    idx := code and Byte($7f);
     if idx < Length(Tokens) then
         GetToken := Tokens[idx]
     else
@@ -66,10 +66,10 @@ begin
     Halt(-1);
 end;
 
-procedure EnsureSizeLeft(var pState: ParseState; size: integer);
+procedure EnsureSizeLeft(var pState: ParseState; length: Word);
 begin
-    if pState.pos + size > pState.bBuffer.size then
-        Die('Not enough space left.');
+    if pState.pos + length > pState.bBuffer.size then
+        Die('Not enough space left for ' + Format('%d', [length]) + ' bytes.');
 end;
 
 function ReadByte(var pState: ParseState): Byte;
@@ -86,7 +86,7 @@ function ReadWord(var pState: ParseState): Word;
 var
     bytePtr: PByte;
 begin
-    EnsureSizeLeft(pState, sizeOf(integer));
+    EnsureSizeLeft(pState, sizeOf(Word));
     bytePtr := pState.bBuffer.data + pState.pos;
     ReadWord := PWord(bytePtr)^;
     Inc(pState.pos, 2);
@@ -101,7 +101,7 @@ begin
         Die('Line does not end with 0.');
 end;
 
-function ReadBasicLine(var pState: ParseState; currentAddr: integer): BasicLine;
+function ReadBasicLine(var pState: ParseState; currentAddr: Word): BasicLine;
 var
     bLine: BasicLine;
 begin
@@ -114,7 +114,7 @@ begin
     else
     begin
         bLine.rawLine.data := pState.bBuffer.data + pState.pos;
-        bLine.rawLine.size := bLine.nextAddr - currentAddr - 2;
+        bLine.rawLine.size := Word(bLine.nextAddr - currentAddr - 2);
         EnsureLineEndsWith0(bLine.rawLine);
         Inc(pState.pos, bLine.rawLine.size);
     end;
@@ -124,13 +124,13 @@ end;
 
 procedure AddLine(var bPrg: BasicPrg; newLine: BasicLine);
 var
-    newMaxLines: integer;
+    newMaxLines: LongInt;
 begin;
     if newLine.nextAddr = 0 then
         Die('Reached the end of the program.');
     if bPrg.nbrLines = bPrg.maxLines then
     begin
-        newMaxLines := bPrg.maxLines * 2;
+        newMaxLines := LongInt(bPrg.maxLines * 2);
         SetLength(bPrg.basicLines, newMaxLines);
         bPrg.maxLines := newMaxLines;
     end;
@@ -141,7 +141,7 @@ end;
 function ParseBasicPrg(bBuffer: ByteBuffer): BasicPrg;
 var
     bPrg: BasicPrg;
-    currentAddr: integer;
+    currentAddr: Word;
     pState: ParseState;
     newLine: BasicLine;
 begin
@@ -162,7 +162,9 @@ begin
     end;
 
     bPrg.fileSize := bBuffer.size;
-    bPrg.remainingBytes := bBuffer.size - pState.pos;
+    if (pState.pos > bBuffer.size) then
+        Die ('"pos" overflowed the buffer size');
+    bPrg.remainingBytes := Word(bBuffer.size - pState.pos);
 
     ParseBasicPrg := bPrg;
 end;
@@ -174,9 +176,9 @@ var
 begin
     Assign(prgFile, filename);
     Reset(prgFile, 1);
-    bBuffer.size := FileSize(prgFile);
-    bBuffer.data := GetMem(SizeOf(Byte) * bBuffer.size);
-    BlockRead(prgFile, bBuffer.data^, bBuffer.size - 1);
+    bBuffer.size := Word(FileSize(prgFile));
+    bBuffer.data := GetMem(PtrUInt(SizeOf(Byte) *  bBuffer.size));
+    BlockRead(prgFile, bBuffer.data^, Int64(bBuffer.size));
     Close(prgFile);
     ReadFile := bBuffer;
 end;
@@ -215,7 +217,7 @@ end;
 procedure PrintBasicPrg(bPrg: BasicPrg; infoMode: boolean);
 var
     bLine: BasicLine;
-    i: integer;
+    i: LongInt;
     decodedLine: string;
 begin
     if infoMode then
@@ -224,7 +226,7 @@ begin
          writeln('line count: ', bPrg.nbrLines);
          writeln('(beginning of program)');
     end;
-    for i := 0 to bPrg.nbrLines - 1 do
+    for i := 0 to LongInt(bPrg.nbrLines - 1) do
     begin
         bLine := bPrg.basicLines[i];
         if bLine.nextAddr = 0 then
@@ -246,12 +248,14 @@ end;
 var
     bBuffer: ByteBuffer;
     bPrg: BasicPrg;
-    i: integer;
+    i: LongInt;
     helpMode, infoMode: boolean;
     filename: string;
 begin;
     helpMode := false;
     infoMode := false;
+    filename := '';
+
     for i := 1 to ParamCount do
     begin
         if ParamStr(i) = '--help' then
