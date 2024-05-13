@@ -5,7 +5,7 @@ TARGET := c64-prg-reader
 SRCS := $(TARGET).pas
 
 ifeq ($(TARGET_OS), windows)
-OS_OPTS := -Twin64
+OS_OPTS := -WC -Twin64
 EXE_SUFFIX := .exe
 else
 OS_OPTS :=
@@ -18,10 +18,10 @@ DEBUG_OPTS := -Ci -Co -CO -Cr -CR -g -gh -l -O- -dDEBUG
 ifeq ($(DEBUG),1)
 EXTRA_OPTS := $(DEBUG_OPTS)
 else
-EXTRA_OPTS :=
+EXTRA_OPTS := -O3
 endif
 
-BUILD_OPTS := -Cg -Co -vw -ve $(EXTRA_OPTS)
+BUILD_OPTS := -Cg -Co -vw -ve -Xe -XX -Xc $(EXTRA_OPTS)
 
 all: $(EXE)
 

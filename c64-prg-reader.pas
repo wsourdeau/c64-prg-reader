@@ -1,11 +1,21 @@
 program PrgReader;
 
-uses SysUtils;
-
+{$CODEPAGE UTF8}
 {$TYPEDADDRESS ON}
 {$R+}
 
+uses
+    {$IFDEF WINDOWS}
+    Windows,
+    {$ENDIF}
+    SysUtils;
+
 type
+    ProgramOptions = record
+        filename, listingFormat: string;
+        helpMode, infoMode: boolean;
+    end;
+
     ByteBuffer = record
         data: PByte;
         size: Word;
@@ -28,24 +38,28 @@ type
     end;
 
 const
-    Tokens: Array of string = ('END', 'FOR', 'NEXT', 'DATA',
-                               'INPUT#', 'INPUT', 'DIM', 'READ',
-                               'LET', 'GOTO', 'RUN', 'IF', 'RESTORE',
-                               'GOSUB', 'RETURN', 'REM', 'STOP',
-                               'ON', 'WAIT', 'LOAD', 'SAVE',
-                               'VERIFY', 'DEF', 'POKE', 'PRINT#',
-                               'PRINT', 'CONT', 'LIST', 'CLR', 'CMD',
-                               'SYS', 'OPEN', 'CLOSE', 'GET', 'NEW',
-                               'TAB(', 'TO', 'FN', 'SPC(', 'THEN',
-                               'NOT', 'STEP', '+', '-', '*', '/',
-                               '^', 'AND', 'OR', '>', '=', '<',
-                               'SGN', 'INT', 'ABS', 'USR', 'FRE',
-                               'POS', 'SQR', 'RND', 'LOG', 'EXP',
-                               'COS', 'SIN', 'TAN', 'ATN', 'PEEK',
-                               'LEN', 'STR$', 'VAL', 'ASC', 'CHR$',
-                               'LEFT$', 'RIGHT$', 'MID$');
+    HelpOption = '--help';
+    InfoOption = '--info';
+    ListingFmtOption = '--listing-fmt';
+    UnknownOptionPrefix = '--';
+    Tokens: Array of UTF8String = ('END', 'FOR', 'NEXT', 'DATA',
+                                   'INPUT#', 'INPUT', 'DIM', 'READ',
+                                   'LET', 'GOTO', 'RUN', 'IF', 'RESTORE',
+                                   'GOSUB', 'RETURN', 'REM', 'STOP',
+                                   'ON', 'WAIT', 'LOAD', 'SAVE',
+                                   'VERIFY', 'DEF', 'POKE', 'PRINT#',
+                                   'PRINT', 'CONT', 'LIST', 'CLR', 'CMD',
+                                   'SYS', 'OPEN', 'CLOSE', 'GET', 'NEW',
+                                   'TAB(', 'TO', 'FN', 'SPC(', 'THEN',
+                                   'NOT', 'STEP', '+', '-', '*', '/',
+                                   '^', 'AND', 'OR', '>', '=', '<',
+                                   'SGN', 'INT', 'ABS', 'USR', 'FRE',
+                                   'POS', 'SQR', 'RND', 'LOG', 'EXP',
+                                   'COS', 'SIN', 'TAN', 'ATN', 'PEEK',
+                                   'LEN', 'STR$', 'VAL', 'ASC', 'CHR$',
+                                   'LEFT$', 'RIGHT$', 'MID$');
 
-function GetToken(code: Byte): string;
+function GetToken(code: Byte): UTF8String;
 var
     idx: Byte;
     nbrStr: string;
@@ -113,6 +127,10 @@ begin
     end
     else
     begin
+        if bLine.nextAddr < currentAddr then
+            Die('newLine.nextAddr < currentAddr');
+        if bLine.nextAddr > (currentAddr + 100) then
+            Die('Dubious address further from current by 100 bytes: current=' + format('%.4x', [currentAddr]) + 'next=' + format('%.4x', [bLine.nextAddr]));
         bLine.rawLine.data := pState.bBuffer.data + pState.pos;
         bLine.rawLine.size := Word(bLine.nextAddr - currentAddr - 2);
         EnsureLineEndsWith0(bLine.rawLine);
@@ -158,12 +176,12 @@ begin
         newLine := ReadBasicLine(pState, currentAddr);
         if newLine.nextAddr <> 0 then
             AddLine(bPrg, newLine);
-        currentAddr := newLine.nextAddr
+        currentAddr := newLine.nextAddr;
     end;
 
     bPrg.fileSize := bBuffer.size;
     if (pState.pos > bBuffer.size) then
-        Die ('"pos" overflowed the buffer size');
+        Die('"pos" overflowed the buffer size');
     bPrg.remainingBytes := Word(bBuffer.size - pState.pos);
 
     ParseBasicPrg := bPrg;
@@ -183,11 +201,11 @@ begin
     ReadFile := bBuffer;
 end;
 
-function DecodeLine(rawLine: ByteBuffer): string;
+function DecodeLine(rawLine: ByteBuffer): UTF8String;
 var
     pState: ParseState;
     currentByte: Byte;
-    decodedLine, word: string;
+    decodedLine, word: UTF8String;
     quoted: boolean;
 begin
     pState.bBuffer := rawLine;
@@ -214,18 +232,68 @@ begin
     DecodeLine := decodedLine;
 end;
 
-procedure PrintBasicPrg(bPrg: BasicPrg; infoMode: boolean);
+function GetMachineModel(startAddr: Word): string;
+begin
+    if startAddr = $0801 then
+        GetMachineModel := 'C64 (basic v2)'
+    else if startAddr = $1001 then
+        GetMachineModel := 'C16 or Plus/4'
+    else if startAddr = $1201 then
+        GetMachineModel := 'VIC-20'
+    else if startAddr = $1c01 then
+        GetMachineModel := 'C128'
+    else
+        GetMachineModel := 'Unknown';
+end;
+
+function IsCompiledPrg(bPrg: BasicPrg): boolean;
+var
+    rawLine: ByteBuffer;
+    tokenChar: Byte;
+    instruction: string;
+begin
+    IsCompiledPrg := false;
+    if bPrg.nbrLines = 1 then
+    begin
+        rawLine := bPrg.basicLines[0].rawLine;
+        if rawLine.size > 3 then
+        begin
+            tokenChar := rawLine.data[2];
+            instruction := GetToken(tokenChar);
+            if instruction = 'SYS' then
+                IsCompiledPrg := true;
+        end;
+    end;
+end;
+
+procedure PrintPrgInfos(filename: string; bPrg: BasicPrg);
+begin
+    writeln('# ', ExtractFilename(filename));
+    writeln();
+    writeln('## Infos');
+    writeln();
+    writeln('* File size: ', bPrg.fileSize, ' bytes');
+    writeln('* Start address: ', format('0x%.4X', [bPrg.startAddr]));
+    writeln('* Machine Model: ', GetMachineModel(bPrg.startAddr));
+    if (IsCompiledPrg(bPrg)) then
+        writeln('* Program is really a compiled program');
+    writeln('* Lines of BASIC code: ', bPrg.nbrLines);
+    writeln('* Remaining after BASIC code: ', bPrg.remainingBytes, ' bytes');
+    writeln();
+    writeln('## BASIC program (', bPrg.nbrLines, ' lines)');
+    writeln();
+end;
+
+procedure PrintBasicPrg(bPrg: BasicPrg; options: ProgramOptions);
 var
     bLine: BasicLine;
     i: LongInt;
     decodedLine: string;
+    showTicks: boolean;
 begin
-    if infoMode then
-    begin
-         writeln('start address: ', format('0x%X', [bPrg.startAddr]));
-         writeln('line count: ', bPrg.nbrLines);
-         writeln('(beginning of program)');
-    end;
+    showTicks := options.infoMode and (options.listingFormat = 'markdown');
+    if showTicks then
+        writeln('```pascal');
     for i := 0 to LongInt(bPrg.nbrLines - 1) do
     begin
         bLine := bPrg.basicLines[i];
@@ -236,52 +304,62 @@ begin
             writeln('Unexpected character.');
         writeln(decodedLine);
     end;
-    if infoMode then
-    begin
-        writeln('(end of program)');
-        writeln('file size: ', bPrg.fileSize);
-        writeln('remaining bytes: ', bPrg.remainingBytes);
-    end;
-
+    if showTicks then
+        writeln('```');
 end;
 
+function ParseProgramOptions(): ProgramOptions;
 var
-    bBuffer: ByteBuffer;
-    bPrg: BasicPrg;
-    i: LongInt;
-    helpMode, infoMode: boolean;
-    filename: string;
-begin;
-    helpMode := false;
-    infoMode := false;
-    filename := '';
+    i: integer;
+begin
+    ParseProgramOptions.listingFormat := 'raw';
+    ParseProgramOptions.helpMode := false;
+    ParseProgramOptions.infoMode := false;
+    ParseProgramOptions.filename := '';
 
     for i := 1 to ParamCount do
     begin
-        if ParamStr(i) = '--help' then
-            helpMode := true
-        else if ParamStr(i) = '--info' then
-            infoMode := true
-        else if LeftStr(ParamStr(i), 2) = '--' then
-            writeln('Unknown option: ', ParamStr(i))
+        if ParamStr(i) = HelpOption then
+            ParseProgramOptions.helpMode := true
+        else if ParamStr(i) = InfoOption then
+            ParseProgramOptions.infoMode := true
+        else if LeftStr(ParamStr(i), Length(ListingFmtOption) + 1) = ListingFmtOption + '=' then
+            ParseProgramOptions.listingFormat := RightStr(ParamStr(i),
+                                                          Length(ParamStr(i)) - (Length(ListingFmtOption) + 1))
+        else if LeftStr(ParamStr(i), 2) = UnknownOptionPrefix then
+            Die('Unknown option: ' + ParamStr(i))
         else
-            filename := ParamStr(i);
+            ParseProgramOptions.filename := ParamStr(i);
     end;
+end;
 
-    if helpMode then
+var
+    options: ProgramOptions;
+    bBuffer: ByteBuffer;
+    bPrg: BasicPrg;
+begin;
+    {$IFDEF WINDOWS}
+    SetConsoleOutputCP(CP_UTF8);
+    {$ENDIF}
+
+    options := ParseProgramOptions();
+    if options.helpMode then
     begin
         writeln('c64-prg-reader --help  or  c64-prg-reader [options] filename');
         writeln('Options:');
-        writeln('  --help    display this help');
-        writeln('  --info    display information about the file in addition to the source code');
+        writeln('  --help                  display this help');
+        writeln('  --info                  display information about the file in addition to the source code');
+        writeln('  --listing-fmt=[format]  format the source code according to ''format'' (*raw, markdown)');
     end
-    else if filename = '' then
-        writeln('Missing filename parameter.')
+    else if options.filename = '' then
+        Die('Missing filename parameter.')
     else
     begin
-        bBuffer := ReadFile(filename);
+        bBuffer := ReadFile(options.filename);
         bPrg := ParseBasicPrg(bBuffer);
-        PrintBasicPrg(bPrg, infoMode);
+        if options.infoMode then
+            PrintPrgInfos(options.filename, bPrg);
+        PrintBasicPrg(bPrg, options);
         FreeMem(bBuffer.data);
     end
 end.
