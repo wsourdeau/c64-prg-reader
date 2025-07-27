@@ -83,7 +83,7 @@ end;
 procedure EnsureSizeLeft(var pState: ParseState; length: Word);
 begin
     if pState.pos + length > pState.bBuffer.size then
-        Die('Not enough space left for ' + Format('%d', [length]) + ' bytes.');
+        Die('not enough space left for ' + Format('%d', [length]) + ' bytes.');
 end;
 
 function ReadByte(var pState: ParseState): Byte;
@@ -112,7 +112,7 @@ var
 begin
     endData := line.data + line.size - 1;
     if endData^ <> 0 then
-        Die('Line does not end with 0.');
+        Die('line does not end with 0.');
 end;
 
 function ReadBasicLine(var pState: ParseState; currentAddr: Word): BasicLine;
@@ -130,7 +130,9 @@ begin
         if bLine.nextAddr < currentAddr then
             Die('newLine.nextAddr < currentAddr');
         if bLine.nextAddr > (currentAddr + 100) then
-            Die('Dubious address further from current by 100 bytes: current=' + format('%.4x', [currentAddr]) + 'next=' + format('%.4x', [bLine.nextAddr]));
+            Die('dubious address further from current by 100 bytes:' +
+                    ' current=' + format('%.4x', [currentAddr]) +
+                    ' next=' + format('%.4x', [bLine.nextAddr]));
         bLine.rawLine.data := pState.bBuffer.data + pState.pos;
         bLine.rawLine.size := Word(bLine.nextAddr - currentAddr - 2);
         EnsureLineEndsWith0(bLine.rawLine);
@@ -145,7 +147,7 @@ var
     newMaxLines: LongInt;
 begin;
     if newLine.nextAddr = 0 then
-        Die('Reached the end of the program.');
+        Die('reached the end of the program.');
     if bPrg.nbrLines = bPrg.maxLines then
     begin
         newMaxLines := LongInt(bPrg.maxLines * 2);
@@ -298,10 +300,10 @@ begin
     begin
         bLine := bPrg.basicLines[i];
         if bLine.nextAddr = 0 then
-            Die('Reached the end of the program.');
+            Die('reached the end of the program.');
         decodedLine := DecodeLine(bLine.rawLine);
         if decodedLine[1] = Char(13) then
-            writeln('Unexpected character.');
+            writeln('unexpected character.');
         writeln(decodedLine);
     end;
     if showTicks then
@@ -327,7 +329,7 @@ begin
             ParseProgramOptions.listingFormat := RightStr(ParamStr(i),
                                                           Length(ParamStr(i)) - (Length(ListingFmtOption) + 1))
         else if LeftStr(ParamStr(i), 2) = UnknownOptionPrefix then
-            Die('Unknown option: ' + ParamStr(i))
+            Die('unknown option: ' + ParamStr(i))
         else
             ParseProgramOptions.filename := ParamStr(i);
     end;
@@ -348,11 +350,13 @@ begin;
         writeln('c64-prg-reader --help  or  c64-prg-reader [options] filename');
         writeln('Options:');
         writeln('  --help                  display this help');
-        writeln('  --info                  display information about the file in addition to the source code');
-        writeln('  --listing-fmt=[format]  format the source code according to ''format'' (*raw, markdown)');
+        writeln('  --info                  display information about the file'
+                    + ' in addition to the source code');
+        writeln('  --listing-fmt=[format]  format the source code according to'
+                    + ' ''format'' (*raw, markdown)');
     end
     else if options.filename = '' then
-        Die('Missing filename parameter.')
+        Die('missing filename parameter.')
     else
     begin
         bBuffer := ReadFile(options.filename);
